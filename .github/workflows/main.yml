@@ -1,68 +1,33 @@
-name: 🚀 10x RDP Batch - WORKING VERSION
-on: [workflow_dispatch]
-
+name: Windows RDP
+on:
+  workflow_dispatch:
+  
 jobs:
-  rdp-sessions:
-    strategy:
-      matrix:
-        id: [1,2,3,4,5,6,7,8,9,10]  # SAFE 10 instances
+  rdp:
     runs-on: windows-latest
-    timeout-minutes: 350
-    outputs:
-      ip-${{ matrix.id }}: ${{ steps.rdp.outputs.ip }}
     steps:
-    - name: RDP Session #${{ matrix.id }}
-      id: rdp
+    - uses: actions/checkout@v4
+      
+    - name: Download ngrok
       run: |
-        Set-ItemProperty -Path 'HKLM:SystemCurrentControlSetControlTerminal Server' -Name "fDenyTSConnections" -Value 0
-        netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
-        $pass = "RDP2025@#123"
-        $secpass = ConvertTo-SecureString $pass -AsPlainText -Force
-        $user = "RDP2025"
-        if (!(Get-LocalUser $user -ErrorAction SilentlyContinue)) {
-          New-LocalUser $user -Password $secpass -AccountNeverExpires
-        }
-        Add-LocalGroupMember "Administrators" $user
-        Add-LocalGroupMember "Remote Desktop Users" $user
-        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "$env:TEMP\ts.msi"
-        Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\ts.msi`" /quiet" -Wait
-        $hn = "rdp${{ matrix.id }}-${env:GITHUB_RUN_NUMBER}"
-        & "$env:ProgramFilesTailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hn
-        Start-Sleep 20
-        $ip = & "$env:ProgramFilesTailscale\tailscale.exe" ip -4
-        echo "ip=$ip" >> $GITHUB_OUTPUT
-
-  summary:
-    needs: rdp-sessions
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/github-script@v7
-      with:
-        script: |
-          const ips = [
-            `${{ needs.rdp-sessions.outputs['ip-1'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-2'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-3'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-4'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-5'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-6'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-7'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-8'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-9'] }}:3389`,
-            `${{ needs.rdp-sessions.outputs['ip-10'] }}:3389`
-          ];
-          await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: `🚀 10x RDP BATCH #${{ github.run_number }} READY`,
-            body: `**USER:** RDP2025
-**PASS:** RDP2025@#123
-
-**10 RDP IPs:**
-```
-${ips.join('\
-')}
-```
-
-**160GB RAM | 40 CORES | 6 HOURS**`
-          });
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        .
+grok.exe authtoken ${{ secrets.NGROK_TOKEN }}
+        
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty -Path 'HKLM:SystemCurrentControlSetControlTerminal Server' -name "fDenyTSConnections" -value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        
+    - name: Get public IP
+      run: curl ifconfig.me > ip.txt
+      
+    - name: Start ngrok
+      run: Start-Process -FilePath .
+grok.exe -ArgumentList "tcp","3389","--remote-addr=0.tcp.ngrok.io:12345" -NoNewWindow
+      
+    - name: Display connection info
+      run: |
+        Get-Content ip.txt
+        Write-Output "RDP: 0.tcp.ngrok.io:12345 User: Administrator Password: auto-generated in logs"
